@@ -58,6 +58,12 @@ public class SecurityConfig {
                         })
                         .permitAll()
                 );
+        http.exceptionHandling(exception -> exception
+                .authenticationEntryPoint((request, response, authException) -> {
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.getWriter().write("Unauthorized");
+                })
+        );
 
         return http.build();
     }

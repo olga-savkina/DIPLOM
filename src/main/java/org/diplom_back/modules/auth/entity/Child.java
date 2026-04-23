@@ -1,5 +1,6 @@
 package org.diplom_back.modules.auth.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Data;
 import java.time.LocalDate;
@@ -20,6 +21,7 @@ public class Child {
     private LocalDate birthDate;
 
     @ManyToOne
-    @JoinColumn(name = "user_id", referencedColumnName = "user_id")
+    @JoinColumn(name = "user_id")
+    @JsonIgnore // Добавьте это, чтобы не тянуть User обратно внутри каждого ребенка
     private User user;
 }
