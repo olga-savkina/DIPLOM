@@ -20,9 +20,6 @@ public class Product {
     @Column(name = "product_id", length = 36)
     private String productId;
 
-//    @Column(name = "category_id", length = 36)
-//    private String categoryId;
-
     @Column(nullable = false)
     private String name;
 

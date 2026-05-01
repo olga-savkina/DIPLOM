@@ -4,12 +4,12 @@ import lombok.RequiredArgsConstructor;
 import org.diplom_back.modules.auth.entity.Client;
 import org.diplom_back.modules.auth.entity.User;
 import org.diplom_back.modules.auth.repository.*;
-import org.diplom_back.modules.orders.dto.CartItemDTO;
-import org.diplom_back.modules.orders.dto.OrderRequest;
+import org.diplom_back.modules.orders.dto.*;
 import org.diplom_back.modules.orders.entity.Order;
 import org.diplom_back.modules.orders.entity.OrderItem;
 import org.diplom_back.modules.orders.repository.*;
-import org.springframework.stereotype.*;
+import org.diplom_back.modules.products.repository.ProductVariantRepository;
+import org.springframework.stereotype.Service;
 import jakarta.transaction.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -20,10 +20,14 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class OrderService {
+    // 1. Все репозитории объявляем один раз в начале
     private final OrderRepository orderRepository;
-    private final OrderItemRepository orderItemRepository;
     private final ClientRepository clientRepository;
+    private final ProductVariantRepository productVariantRepository;
 
+    /**
+     * Создание нового заказа (использует OrderRequest)
+     */
     @Transactional
     public Order createOrder(OrderRequest dto, User user) {
         Client client = user.getClient();
@@ -53,11 +57,54 @@ public class OrderService {
         order.setTotalAmount(total);
         order.setItems(items);
 
-        // Начисляем баллы клиенту (например, 10% от покупки)
+        // Логика бонусов
         int bonus = total.multiply(new BigDecimal("0.1")).intValue();
         client.setBonusPoints(client.getBonusPoints() + bonus);
         clientRepository.save(client);
 
         return orderRepository.save(order);
+    }
+
+    /**
+     * Получение истории заказов (использует OrderResponseDTO для фронтенда)
+     */
+    public List<OrderResponseDTO> getUserOrders(String email) {
+        // Получаем заказы из базы и конвертируем их, обогащая названиями товаров
+        return orderRepository.findByClientUserEmail(email).stream()
+                .map(this::convertToResponseDTO)
+                .toList();
+    }
+
+    /**
+     * Вспомогательный метод для превращения Entity в DTO с названием товара
+     */
+    private OrderResponseDTO convertToResponseDTO(Order order) {
+        OrderResponseDTO dto = new OrderResponseDTO();
+        dto.setOrderId(order.getOrderId());
+        dto.setOrderDate(order.getOrderDate().toString());
+        dto.setTotalAmount(order.getTotalAmount());
+        dto.setStatus(order.getStatus());
+        dto.setShippingAddress(order.getShippingAddress());
+
+        List<OrderItemResponseDTO> itemDTOs = order.getItems().stream()
+                .map(item -> {
+                    OrderItemResponseDTO itemDto = new OrderItemResponseDTO();
+                    itemDto.setVariantId(item.getVariantId());
+                    itemDto.setQuantity(item.getQuantity());
+                    itemDto.setPriceAtSale(item.getPriceAtSale());
+
+                    // Находим вариант и заполняем детальную информацию
+                    productVariantRepository.findById(item.getVariantId()).ifPresent(variant -> {
+                        itemDto.setProductName(variant.getProduct().getName()); // Из сущности Product
+                        itemDto.setColor(variant.getColor()); // Из сущности ProductVariant
+                        itemDto.setSize(variant.getSize());   // Из сущности ProductVariant
+                        itemDto.setSku(variant.getSku());     // На всякий случай оставляем
+                    });
+
+                    return itemDto;
+                }).toList();
+
+        dto.setItems(itemDTOs);
+        return dto;
     }
 }

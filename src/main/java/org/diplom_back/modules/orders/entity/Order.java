@@ -1,5 +1,6 @@
 package org.diplom_back.modules.orders.entity;
 
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import lombok.*;
 import org.diplom_back.modules.auth.entity.Client;
@@ -9,7 +10,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 @Entity
-@Table(name = "`order` Rose") // order - зарезервированное слово в SQL, лучше в кавычках
+@Table(name = "`order`") // order - зарезервированное слово в SQL, лучше в кавычках
 @Data
 public class Order {
     @Id
@@ -32,5 +33,6 @@ public class Order {
     private String shippingAddress;
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL)
+    @JsonManagedReference // "Главная" сторона, которая будет отображаться в JSON
     private List<OrderItem> items;
 }
