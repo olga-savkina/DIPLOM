@@ -8,7 +8,9 @@ import org.diplom_back.modules.orders.dto.*;
 import org.diplom_back.modules.orders.entity.Order;
 import org.diplom_back.modules.orders.entity.OrderItem;
 import org.diplom_back.modules.orders.repository.*;
+import org.diplom_back.modules.products.entity.ProductVariant;
 import org.diplom_back.modules.products.repository.ProductVariantRepository;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import jakarta.transaction.Transactional;
 import java.math.BigDecimal;
@@ -43,6 +45,22 @@ public class OrderService {
         List<OrderItem> items = new ArrayList<>();
 
         for (CartItemDTO itemDto : dto.getItems()) {
+            // 1. Находим вариант товара на складе
+            ProductVariant variant = productVariantRepository.findById(itemDto.getVariantId())
+                    .orElseThrow(() -> new RuntimeException("Товар не найден: " + itemDto.getVariantId()));
+
+            // 2. Проверяем, хватает ли товара
+            if (variant.getStockQuantity() < itemDto.getQuantity()) {
+                throw new RuntimeException("Недостаточно товара на складе: " + variant.getProduct().getName());
+            }
+
+            // 3. Уменьшаем количество на складе
+            variant.setStockQuantity(variant.getStockQuantity() - itemDto.getQuantity());
+
+            // Сохраняем обновленный вариант в базу данных
+            productVariantRepository.save(variant);
+
+            // 4. Формируем позицию заказа
             OrderItem item = new OrderItem();
             item.setOrderItemId(UUID.randomUUID().toString());
             item.setOrder(order);
@@ -78,13 +96,24 @@ public class OrderService {
     /**
      * Вспомогательный метод для превращения Entity в DTO с названием товара
      */
-    private OrderResponseDTO convertToResponseDTO(Order order) {
+    public OrderResponseDTO convertToResponseDTO(Order order) {
         OrderResponseDTO dto = new OrderResponseDTO();
         dto.setOrderId(order.getOrderId());
         dto.setOrderDate(order.getOrderDate().toString());
         dto.setTotalAmount(order.getTotalAmount());
         dto.setStatus(order.getStatus());
         dto.setShippingAddress(order.getShippingAddress());
+
+        // --- ДОБАВЬТЕ ЭТОТ БЛОК ---
+        if (order.getClient() != null) {
+            // Создаем DTO для клиента, чтобы передать имя и телефон
+            ClientResponseDTO clientDto = new ClientResponseDTO();
+            clientDto.setFirstName(order.getClient().getFirstName());
+            clientDto.setLastName(order.getClient().getLastName());
+            clientDto.setPhoneNumber(order.getClient().getPhoneNumber());
+            dto.setClient(clientDto);
+        }
+        // --------------------------
 
         List<OrderItemResponseDTO> itemDTOs = order.getItems().stream()
                 .map(item -> {
@@ -93,12 +122,11 @@ public class OrderService {
                     itemDto.setQuantity(item.getQuantity());
                     itemDto.setPriceAtSale(item.getPriceAtSale());
 
-                    // Находим вариант и заполняем детальную информацию
                     productVariantRepository.findById(item.getVariantId()).ifPresent(variant -> {
-                        itemDto.setProductName(variant.getProduct().getName()); // Из сущности Product
-                        itemDto.setColor(variant.getColor()); // Из сущности ProductVariant
-                        itemDto.setSize(variant.getSize());   // Из сущности ProductVariant
-                        itemDto.setSku(variant.getSku());     // На всякий случай оставляем
+                        itemDto.setProductName(variant.getProduct().getName());
+                        itemDto.setColor(variant.getColor());
+                        itemDto.setSize(variant.getSize());
+                        itemDto.setSku(variant.getSku());
                     });
 
                     return itemDto;
@@ -106,5 +134,33 @@ public class OrderService {
 
         dto.setItems(itemDTOs);
         return dto;
+    }
+
+    @Transactional
+    public void cancelOrder(String orderId, String userEmail) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new RuntimeException("Заказ не найден"));
+
+        // Проверка владельца заказа
+        if (!order.getClient().getUser().getEmail().equals(userEmail)) {
+            throw new AccessDeniedException("Вы не можете отменить чужой заказ");
+        }
+
+        // Проверка возможности отмены
+        if (!"PENDING".equals(order.getStatus())) {
+            throw new IllegalStateException("Нельзя отменить заказ в статусе: " + order.getStatus());
+        }
+
+        // 1. Возврат товара на склад
+        for (OrderItem item : order.getItems()) {
+            productVariantRepository.findById(item.getVariantId()).ifPresent(variant -> {
+                variant.setStockQuantity(variant.getStockQuantity() + item.getQuantity());
+                productVariantRepository.save(variant);
+            });
+        }
+
+        // 2. Смена статуса
+        order.setStatus("CANCELLED");
+        orderRepository.save(order);
     }
 }

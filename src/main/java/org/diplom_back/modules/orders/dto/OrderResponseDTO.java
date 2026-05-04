@@ -13,4 +13,5 @@ public class OrderResponseDTO {
     private String status;
     private String shippingAddress;
     private List<OrderItemResponseDTO> items;
+    private ClientResponseDTO client; // Убедитесь, что этот класс у вас создан
 }
