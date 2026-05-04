@@ -36,6 +36,11 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/products/**").permitAll() // Разрешаем всем
+                        .requestMatchers("/api/articles/**").permitAll()
+                        .requestMatchers("/api/categories/**").permitAll()
+                        // РАЗРЕШАЕМ доступ к папке с картинками (иначе фото не загрузятся)
+                        .requestMatchers("/uploads/**").permitAll()
+                        .requestMatchers("/api/reviews/admin/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/reviews/**").permitAll()
                         .requestMatchers("/api/auth/me").authenticated()
                         .anyRequest().authenticated()

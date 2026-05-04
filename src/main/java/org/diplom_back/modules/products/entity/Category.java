@@ -22,6 +22,9 @@ public class Category {
     @Column(nullable = false)
     private String name;
 
+    @Column(name = "target_type", nullable = false, length = 20)
+    private String targetType;
+
     @Column(columnDefinition = "TEXT")
     private String description;
     // Связь многие-ко-многим с товарами

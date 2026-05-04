@@ -21,6 +21,10 @@ public class CategoryController {
     @PostMapping
     public Category create(@RequestBody Category category) {
         category.setCategoryId(UUID.randomUUID().toString());
+        // Если тип не пришел с фронта, ставим по умолчанию PRODUCT
+        if (category.getTargetType() == null) {
+            category.setTargetType("PRODUCT");
+        }
         return categoryRepository.save(category);
     }
 
@@ -30,6 +34,7 @@ public class CategoryController {
         category.setName(details.getName());
         category.setDescription(details.getDescription());
         category.setParentId(details.getParentId());
+        category.setTargetType(details.getTargetType()); // Разрешаем менять тип
         return categoryRepository.save(category);
     }
 
