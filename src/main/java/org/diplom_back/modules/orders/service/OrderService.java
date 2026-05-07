@@ -38,29 +38,29 @@ public class OrderService {
         order.setOrderId(UUID.randomUUID().toString());
         order.setClient(client);
         order.setOrderDate(LocalDateTime.now());
-        order.setStatus("PENDING");
+
+        // --- ИЗМЕНЕНИЕ: Берем статус из DTO (который прислал фронтенд) ---
+        // Если на фронте выбрали CARD -> придет PAID, если CASH -> придет PENDING
+        order.setStatus(dto.getStatus() != null ? dto.getStatus() : "PENDING");
+
         order.setShippingAddress(dto.getShippingAddress());
+        order.setPaymentMethod(dto.getPaymentMethod()); // Не забудь сохранить способ оплаты
 
         BigDecimal total = BigDecimal.ZERO;
         List<OrderItem> items = new ArrayList<>();
 
+        // --- ЛОГИКА ТОВАРОВ ---
         for (CartItemDTO itemDto : dto.getItems()) {
-            // 1. Находим вариант товара на складе
             ProductVariant variant = productVariantRepository.findById(itemDto.getVariantId())
                     .orElseThrow(() -> new RuntimeException("Товар не найден: " + itemDto.getVariantId()));
 
-            // 2. Проверяем, хватает ли товара
             if (variant.getStockQuantity() < itemDto.getQuantity()) {
                 throw new RuntimeException("Недостаточно товара на складе: " + variant.getProduct().getName());
             }
 
-            // 3. Уменьшаем количество на складе
             variant.setStockQuantity(variant.getStockQuantity() - itemDto.getQuantity());
-
-            // Сохраняем обновленный вариант в базу данных
             productVariantRepository.save(variant);
 
-            // 4. Формируем позицию заказа
             OrderItem item = new OrderItem();
             item.setOrderItemId(UUID.randomUUID().toString());
             item.setOrder(order);
@@ -72,12 +72,28 @@ public class OrderService {
             total = total.add(itemDto.getPrice().multiply(BigDecimal.valueOf(itemDto.getQuantity())));
         }
 
+        // --- ЛОГИКА БОНУСОВ ---
+
+        // 1. Списание бонусов (если фронтенд передал usedBonuses)
+        if (dto.getUsedBonuses() != null && dto.getUsedBonuses().compareTo(BigDecimal.ZERO) > 0) {
+            // Проверяем, не пытается ли юзер списать больше, чем у него есть
+            if (client.getBonusPoints() < dto.getUsedBonuses().intValue()) {
+                throw new RuntimeException("Недостаточно бонусов для списания");
+            }
+            // Уменьшаем баланс клиента
+            client.setBonusPoints(client.getBonusPoints() - dto.getUsedBonuses().intValue());
+            // Вычитаем бонусы из итоговой суммы заказа
+            total = total.subtract(dto.getUsedBonuses());
+        }
+
         order.setTotalAmount(total);
         order.setItems(items);
 
-        // Логика бонусов
-        int bonus = total.multiply(new BigDecimal("0.1")).intValue();
-        client.setBonusPoints(client.getBonusPoints() + bonus);
+        // 2. Начисление новых бонусов (10% от фактически оплаченной суммы)
+        int bonusEarned = total.multiply(new BigDecimal("0.1")).intValue();
+        client.setBonusPoints(client.getBonusPoints() + bonusEarned);
+
+        // Сохраняем клиента один раз
         clientRepository.save(client);
 
         return orderRepository.save(order);

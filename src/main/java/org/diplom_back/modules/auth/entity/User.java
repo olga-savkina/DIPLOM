@@ -1,5 +1,6 @@
 package org.diplom_back.modules.auth.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import lombok.Data;
@@ -37,12 +38,12 @@ public class User {
     // Связь с личными данными (клиентом)
     @OneToOne(mappedBy = "user", cascade = CascadeType.ALL)
     @ToString.Exclude // Чтобы не было бесконечной рекурсии в логах
-    @JsonManagedReference
+    @JsonIgnoreProperties("user")
     private Client client;
 
     // Связь с детьми
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
     @ToString.Exclude
-    @JsonManagedReference
+    @JsonIgnoreProperties("user")
     private List<Child> children = new ArrayList<>();
 }

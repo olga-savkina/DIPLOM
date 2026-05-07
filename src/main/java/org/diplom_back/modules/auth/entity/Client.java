@@ -1,6 +1,7 @@
 package org.diplom_back.modules.auth.entity;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Data;
 import java.util.UUID;
@@ -26,7 +27,7 @@ public class Client {
     private Integer bonusPoints = 0;
 
     @OneToOne
-    @JsonBackReference
+    @JsonIgnore
     @JoinColumn(name = "user_id", referencedColumnName = "user_id")
     private User user;
     // Client.java

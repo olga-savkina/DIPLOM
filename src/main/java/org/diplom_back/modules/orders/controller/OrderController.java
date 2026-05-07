@@ -18,7 +18,9 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.security.Principal;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/orders")
@@ -59,5 +61,17 @@ public class OrderController {
         } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
         }
+    }
+    @GetMapping("/me/bonuses")
+    public ResponseEntity<?> getUserBonuses(Principal principal) {
+        // Находим пользователя по имени из сессии/токена
+        User user = userRepository.findByEmail(principal.getName())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        // Возвращаем объект с полем bonuses
+        Map<String, Object> response = new HashMap<>();
+        response.put("bonuses", user.getClient().getBonusPoints());
+
+        return ResponseEntity.ok(response);
     }
 }

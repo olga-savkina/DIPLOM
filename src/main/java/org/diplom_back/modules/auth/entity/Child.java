@@ -23,7 +23,6 @@ public class Child {
 
     @ManyToOne
     @JoinColumn(name = "user_id")
-    @JsonBackReference
     @JsonIgnore // Добавьте это, чтобы не тянуть User обратно внутри каждого ребенка
     private User user;
     // Child.java

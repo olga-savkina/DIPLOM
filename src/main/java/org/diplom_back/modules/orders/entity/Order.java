@@ -31,7 +31,11 @@ public class Order {
 
     @Column(name = "shipping_address", columnDefinition = "TEXT")
     private String shippingAddress;
+    @Column(name = "payment_method")
+    private String paymentMethod; // Добавляем это поле
 
+    @Column(name = "used_bonuses")
+    private Integer usedBonuses;
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL)
     @JsonManagedReference // "Главная" сторона, которая будет отображаться в JSON
     private List<OrderItem> items;

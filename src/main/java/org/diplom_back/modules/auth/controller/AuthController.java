@@ -1,5 +1,6 @@
 package org.diplom_back.modules.auth.controller;
 
+import org.diplom_back.modules.auth.entity.Client;
 import org.diplom_back.modules.auth.entity.User;
 import org.diplom_back.modules.auth.repository.UserRepository;
 import org.springframework.http.HttpStatus;
@@ -32,9 +33,19 @@ public class AuthController {
                     .body("Пользователь с таким Email уже существует!");
         }
 
-        // 2. Если нет — шифруем пароль и сохраняем
+        // 2. Шифруем пароль и ставим роль
         user.setPassword(passwordEncoder.encode(user.getPassword()));
         user.setRole(User.Role.CLIENT);
+
+        // 3. Создаем пустой профиль клиента сразу
+        Client client = new Client();
+        client.setUser(user);        // Указываем, чей это профиль
+        client.setBonusPoints(0);    // На всякий случай инициализируем нулем
+
+        // 4. Привязываем клиента к пользователю
+        user.setClient(client);
+
+        // 5. Сохраняем пользователя (клиент сохранится по каскаду)
         userRepository.save(user);
 
         return ResponseEntity.ok("Регистрация успешна!");
