@@ -40,10 +40,23 @@ public class ProductVariantService {
     }
 
     @Transactional
-    public ProductVariant updateStock(String variantId, Integer newQuantity) {
+    public ProductVariant updateVariant(String variantId, ProductVariant details) {
         ProductVariant variant = variantRepository.findById(variantId)
                 .orElseThrow(() -> new RuntimeException("Вариант не найден"));
-        variant.setStockQuantity(newQuantity);
+
+        // Обновляем основные поля
+        variant.setSize(details.getSize());
+        variant.setColor(details.getColor());
+        variant.setSku(details.getSku());
+        variant.setStockQuantity(details.getStockQuantity());
+
+        // Новые специфичные поля
+        variant.setPriceOverride(details.getPriceOverride());
+        variant.setAgeMin(details.getAgeMin());
+        variant.setAgeMax(details.getAgeMax());
+        variant.setExpiryDate(details.getExpiryDate());
+        variant.setProductionDate(details.getProductionDate());
+
         return variantRepository.save(variant);
     }
 }

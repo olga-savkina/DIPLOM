@@ -7,6 +7,7 @@ import org.diplom_back.modules.auth.repository.*;
 import org.diplom_back.modules.orders.dto.*;
 import org.diplom_back.modules.orders.entity.Order;
 import org.diplom_back.modules.orders.entity.OrderItem;
+import org.diplom_back.modules.orders.entity.OrderStatus;
 import org.diplom_back.modules.orders.repository.*;
 import org.diplom_back.modules.products.entity.ProductVariant;
 import org.diplom_back.modules.products.repository.ProductVariantRepository;
@@ -41,7 +42,11 @@ public class OrderService {
 
         // --- ИЗМЕНЕНИЕ: Берем статус из DTO (который прислал фронтенд) ---
         // Если на фронте выбрали CARD -> придет PAID, если CASH -> придет PENDING
-        order.setStatus(dto.getStatus() != null ? dto.getStatus() : "PENDING");
+        if (dto.getStatus() != null) {
+            order.setStatus(OrderStatus.valueOf(dto.getStatus()));
+        } else {
+            order.setStatus(OrderStatus.PENDING);
+        }
 
         order.setShippingAddress(dto.getShippingAddress());
         order.setPaymentMethod(dto.getPaymentMethod()); // Не забудь сохранить способ оплаты
@@ -117,7 +122,7 @@ public class OrderService {
         dto.setOrderId(order.getOrderId());
         dto.setOrderDate(order.getOrderDate().toString());
         dto.setTotalAmount(order.getTotalAmount());
-        dto.setStatus(order.getStatus());
+        dto.setStatus(order.getStatus().name());
         dto.setShippingAddress(order.getShippingAddress());
 
         // --- ДОБАВЬТЕ ЭТОТ БЛОК ---
@@ -176,7 +181,7 @@ public class OrderService {
         }
 
         // 2. Смена статуса
-        order.setStatus("CANCELLED");
+        order.setStatus(OrderStatus.CANCELLED);
         orderRepository.save(order);
     }
 }

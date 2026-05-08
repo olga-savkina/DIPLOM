@@ -4,6 +4,10 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 import com.fasterxml.jackson.annotation.JsonBackReference;
+import org.diplom_back.modules.warehouse.entity.WarehouseStock;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.UUID;
 
 @Entity
@@ -17,13 +21,32 @@ public class ProductVariant {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "product_id")
-    @JsonBackReference // Чтобы не было бесконечной рекурсии при сериализации в JSON
+    @JsonBackReference
     private Product product;
 
-    private String size;  // Например: "92", "104", "XL"
-    private String color; // Например: "Бежевый"
-    private Integer stockQuantity; // Остаток на складе
-    private String sku; // Артикул, например: "GIRL-SUIT-BEG-104"
+    private String size;
+    private String color;
+    private Integer stockQuantity;
+    private String sku;
+
+    // --- НОВЫЕ ПОЛЯ ---
+
+    @Column(name = "price_override")
+    private BigDecimal priceOverride; // Индивидуальная цена для этого размера/веса
+
+    @Column(name = "age_min")
+    private Integer ageMin; // Мин. возраст в месяцах
+
+    @Column(name = "age_max")
+    private Integer ageMax; // Макс. возраст в месяцах
+
+    @Column(name = "expiry_date")
+    private LocalDate expiryDate; // Срок годности
+
+    @Column(name = "production_date")
+    private LocalDate productionDate; // Дата производства
+
+    // --- МЕТОДЫ ---
 
     @PrePersist
     public void ensureId() {
@@ -31,4 +54,7 @@ public class ProductVariant {
             variantId = UUID.randomUUID().toString();
         }
     }
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "variantId", referencedColumnName = "variant_id", insertable = false, updatable = false)
+    private WarehouseStock stock;
 }

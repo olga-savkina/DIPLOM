@@ -6,6 +6,7 @@ import org.diplom_back.modules.auth.repository.*;
 import org.diplom_back.modules.orders.dto.OrderRequest;
 import org.diplom_back.modules.orders.dto.OrderResponseDTO;
 import org.diplom_back.modules.orders.entity.Order;
+import org.diplom_back.modules.orders.entity.OrderStatus;
 import org.diplom_back.modules.orders.repository.OrderRepository;
 import org.diplom_back.modules.orders.service.*;
 import org.diplom_back.modules.products.repository.ProductVariantRepository;
@@ -13,6 +14,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -41,11 +44,23 @@ public class OrderAdminController {
         Order order = orderRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Заказ не найден"));
 
-        String newStatus = payload.get("status");
-        order.setStatus(newStatus);
-        orderRepository.save(order);
+        String newStatusStr = payload.get("status");
 
-        return ResponseEntity.ok("Статус обновлен");
+        try {
+            OrderStatus newStatus = OrderStatus.valueOf(newStatusStr.toUpperCase());
+
+            order.setStatus(newStatus);
+            // Если ты добавила поле updatedAt, не забудь обновить и его
+            order.setUpdatedAt(LocalDateTime.now());
+
+            orderRepository.save(order);
+            return ResponseEntity.ok("Статус успешно обновлен на " + newStatus);
+
+        } catch (IllegalArgumentException e) {
+            // Если прислали статус, которого нет в нашем списке OrderStatus
+            return ResponseEntity.badRequest()
+                    .body("Ошибка: Статус '" + newStatusStr + "' не существует.");
+        }
     }
 
     @DeleteMapping("/{id}")

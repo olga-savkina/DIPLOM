@@ -29,14 +29,21 @@ public class ProductVariantController {
         return ResponseEntity.ok(variantService.addVariant(productId, variant));
     }
 
-    // Быстрое обновление только количества
-    @PatchMapping("/{variantId}/stock")
-    public ResponseEntity<?> updateStock(
+    // Обновить все данные варианта (включая сроки и возраст)
+    @PutMapping("/{variantId}")
+    public ResponseEntity<ProductVariant> updateVariant(
             @PathVariable String variantId,
-            @RequestParam Integer quantity) {
-        variantService.updateStock(variantId, quantity);
-        return ResponseEntity.ok("Количество обновлено");
+            @RequestBody ProductVariant variantDetails) {
+        return ResponseEntity.ok(variantService.updateVariant(variantId, variantDetails));
     }
+//    // Быстрое обновление только количества
+//    @PatchMapping("/{variantId}/stock")
+//    public ResponseEntity<?> updateStock(
+//            @PathVariable String variantId,
+//            @RequestParam Integer quantity) {
+//        variantService.updateStock(variantId, quantity);
+//        return ResponseEntity.ok("Количество обновлено");
+//    }
 
     // Удалить вариант (размер)
     @DeleteMapping("/{variantId}")

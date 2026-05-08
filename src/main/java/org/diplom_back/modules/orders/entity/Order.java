@@ -24,7 +24,9 @@ public class Order {
     @Column(name = "order_date")
     private LocalDateTime orderDate;
 
-    private String status;
+    @Enumerated(EnumType.STRING) // Сохраняет в БД "PAID", а не порядковый номер 0, 1, 2
+    @Column(name = "status")
+    private OrderStatus status; // Замени String на OrderStatus
 
     @Column(name = "total_amount")
     private BigDecimal totalAmount;
@@ -39,4 +41,14 @@ public class Order {
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL)
     @JsonManagedReference // "Главная" сторона, которая будет отображаться в JSON
     private List<OrderItem> items;
+
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+
+    // Чтобы дата обновлялась автоматически перед сохранением
+    @PrePersist
+    @PreUpdate
+    public void updateTimestamp() {
+        this.updatedAt = LocalDateTime.now();
+    }
 }
