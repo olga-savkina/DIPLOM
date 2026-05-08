@@ -1,5 +1,6 @@
 package org.diplom_back.modules.products.entity;
 
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -17,6 +18,7 @@ import java.util.UUID;
 public class ProductVariant {
 
     @Id
+    @Column(name = "variant_id", length = 36) // Обязательно имя как в базе для связи @OneToOne
     private String variantId;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -24,29 +26,38 @@ public class ProductVariant {
     @JsonBackReference
     private Product product;
 
-    private String size;
-    private String color;
-    private Integer stockQuantity;
+    @Column(name = "sku", unique = true)
     private String sku;
 
-    // --- НОВЫЕ ПОЛЯ ---
+    private String size;
+    private String color;
 
     @Column(name = "price_override")
-    private BigDecimal priceOverride; // Индивидуальная цена для этого размера/веса
+    private BigDecimal priceOverride;
 
     @Column(name = "age_min")
-    private Integer ageMin; // Мин. возраст в месяцах
+    private Integer ageMin;
 
     @Column(name = "age_max")
-    private Integer ageMax; // Макс. возраст в месяцах
-
+    private Integer ageMax;
+    @Transient
+    // ВАЖНО: Эти поля пока остаются, если база еще не обновлена,
+    // но в будущем их нужно удалить, так как данные теперь в WarehouseStock
     @Column(name = "expiry_date")
-    private LocalDate expiryDate; // Срок годности
-
+    private LocalDate expiryDate;
+    @Transient
     @Column(name = "production_date")
-    private LocalDate productionDate; // Дата производства
+    private LocalDate productionDate;
+    @Transient
+    // Старое поле для совместимости (пока не удалено в БД)
+    @Column(name = "stock_quantity")
+    private Integer stockQuantity;
 
-    // --- МЕТОДЫ ---
+    // СВЯЗЬ СО СКЛАДОМ
+    // mappedBy = "variant" указывает на поле 'variant' в классе WarehouseStock
+    @OneToOne(mappedBy = "variant", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    @JsonManagedReference
+    private WarehouseStock stock;
 
     @PrePersist
     public void ensureId() {
@@ -54,7 +65,4 @@ public class ProductVariant {
             variantId = UUID.randomUUID().toString();
         }
     }
-    @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "variantId", referencedColumnName = "variant_id", insertable = false, updatable = false)
-    private WarehouseStock stock;
 }

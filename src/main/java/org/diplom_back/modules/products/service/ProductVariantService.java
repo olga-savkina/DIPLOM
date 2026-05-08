@@ -31,6 +31,11 @@ public class ProductVariantService {
 
         variant.setVariantId(UUID.randomUUID().toString());
         variant.setProduct(product);
+
+        // ВАЖНО: При создании нового варианта складская запись
+        // обычно создается автоматически через WarehouseService или триггер,
+        // либо здесь НЕ устанавливаются количество и даты.
+
         return variantRepository.save(variant);
     }
 
@@ -44,18 +49,18 @@ public class ProductVariantService {
         ProductVariant variant = variantRepository.findById(variantId)
                 .orElseThrow(() -> new RuntimeException("Вариант не найден"));
 
-        // Обновляем основные поля
+        // Обновляем ТОЛЬКО характеристики описания
         variant.setSize(details.getSize());
         variant.setColor(details.getColor());
         variant.setSku(details.getSku());
-        variant.setStockQuantity(details.getStockQuantity());
 
-        // Новые специфичные поля
+        // Новые специфичные поля (цены и возраст)
         variant.setPriceOverride(details.getPriceOverride());
         variant.setAgeMin(details.getAgeMin());
         variant.setAgeMax(details.getAgeMax());
-        variant.setExpiryDate(details.getExpiryDate());
-        variant.setProductionDate(details.getProductionDate());
+
+        // СТАТИСТИЧЕСКИЕ ПОЛЯ (quantity, dates) УДАЛЕНЫ ОТСЮДА,
+        // так как они управляются через WarehouseService
 
         return variantRepository.save(variant);
     }

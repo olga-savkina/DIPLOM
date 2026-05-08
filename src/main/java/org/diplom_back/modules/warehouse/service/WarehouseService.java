@@ -1,7 +1,9 @@
 package org.diplom_back.modules.warehouse.service;
 
 import org.diplom_back.modules.products.entity.Product;
+import org.diplom_back.modules.products.entity.ProductVariant;
 import org.diplom_back.modules.products.repository.ProductRepository;
+import org.diplom_back.modules.products.repository.ProductVariantRepository;
 import org.diplom_back.modules.warehouse.dto.CategoryDTO;
 import org.diplom_back.modules.warehouse.dto.ImageDTO;
 import org.diplom_back.modules.warehouse.dto.ProductWarehouseDTO;
@@ -12,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -19,13 +22,13 @@ import java.util.stream.Collectors;
 public class WarehouseService {
 
     @Autowired
-    private WarehouseStockRepository stockRepository;
+    private WarehouseStockRepository warehouseStockRepository;
+
+    @Autowired
+    private  ProductVariantRepository productVariantRepository;
 
     @Autowired
     private ProductRepository productRepository;
-
-
-
 
     public List<ProductWarehouseDTO> getAllInventory() {
         List<Product> products = productRepository.findAll();
@@ -38,15 +41,7 @@ public class WarehouseService {
             dto.setDescription(product.getDescription());
             dto.setBasePrice(product.getBasePrice());
 
-            // Маппим картинки
-            dto.setImages(product.getImages().stream().map(img -> {
-                ImageDTO i = new ImageDTO();
-                i.setImageId(img.getImageId());
-                i.setImageUrl(img.getImageUrl());
-                return i;
-            }).collect(Collectors.toList()));
-
-            // Маппим категории
+            // Категории
             dto.setCategories(product.getCategories().stream().map(cat -> {
                 CategoryDTO c = new CategoryDTO();
                 c.setCategoryId(cat.getCategoryId());
@@ -54,7 +49,15 @@ public class WarehouseService {
                 return c;
             }).collect(Collectors.toList()));
 
-            // Маппим варианты с данными из СТОКА
+            // Картинки
+            dto.setImages(product.getImages().stream().map(img -> {
+                ImageDTO i = new ImageDTO();
+                i.setImageId(img.getImageId());
+                i.setImageUrl(img.getImageUrl());
+                return i;
+            }).collect(Collectors.toList()));
+
+            // Варианты + Сток (через связь в Entity)
             dto.setVariants(product.getVariants().stream().map(variant -> {
                 VariantWarehouseDTO vDto = new VariantWarehouseDTO();
                 vDto.setVariantId(variant.getVariantId());
@@ -65,11 +68,13 @@ public class WarehouseService {
                 vDto.setAgeMin(variant.getAgeMin());
                 vDto.setAgeMax(variant.getAgeMax());
 
-                // Самый важный момент: берем данные из репозитория склада
-                WarehouseStock stock = stockRepository.findByVariantId(variant.getVariantId());
+                // Берем сток напрямую из объекта варианта
+                WarehouseStock stock = variant.getStock();
                 if (stock != null) {
                     vDto.setQuantity(stock.getQuantity());
                     vDto.setReservedQuantity(stock.getReservedQuantity());
+                    vDto.setExpiryDate(stock.getExpiryDate()); // Теперь даты в стоке
+                    vDto.setProductionDate(stock.getProductionDate());
                     vDto.setLastUpdated(stock.getLastUpdated());
                 } else {
                     vDto.setQuantity(0);
@@ -84,14 +89,28 @@ public class WarehouseService {
     }
 
     @Transactional
-    public void replenishStock(String variantId, Integer amount) {
-        if (amount <= 0) {
-            throw new IllegalArgumentException("Количество для закупки должно быть больше нуля");
-        }
+    public void replenishStock(String variantId, Integer amount, LocalDate expiryDate) {
+        WarehouseStock stock = warehouseStockRepository.findByVariant_VariantId(variantId)
+                .orElseGet(() -> {
+                    WarehouseStock newStock = new WarehouseStock();
+                    newStock.setStockId(java.util.UUID.randomUUID().toString()); // Генерируем ID для новой записи
 
-        // Используем метод из репозитория, который мы создали ранее
-        stockRepository.addStock(variantId, amount);
+                    // 1. Сначала находим сам объект варианта в базе
+                    // Тебе нужно внедрить productVariantRepository в этот сервис через @Autowired
+                    ProductVariant variantObj = productVariantRepository.findById(variantId)
+                            .orElseThrow(() -> new RuntimeException("Вариант товара с ID " + variantId + " не найден"));
 
-        // Здесь можно добавить логику логирования: кто и когда закупил товар
+                    // 2. Теперь устанавливаем этот объект в новую запись склада
+                    newStock.setVariant(variantObj);
+                    newStock.setQuantity(0);
+                    newStock.setReservedQuantity(0);
+                    return newStock;
+                });
+
+        // 3. Обновляем данные
+        stock.setQuantity(stock.getQuantity() + amount);
+        stock.setExpiryDate(expiryDate);
+
+        warehouseStockRepository.save(stock);
     }
 }

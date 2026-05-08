@@ -3,6 +3,7 @@ package org.diplom_back.modules.warehouse.dto;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Data
@@ -18,4 +19,6 @@ public class VariantWarehouseDTO {
     private Integer quantity;
     private Integer reservedQuantity;
     private LocalDateTime lastUpdated;
+    private LocalDate expiryDate;
+    private LocalDate productionDate;
 }

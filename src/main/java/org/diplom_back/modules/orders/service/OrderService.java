@@ -11,6 +11,8 @@ import org.diplom_back.modules.orders.entity.OrderStatus;
 import org.diplom_back.modules.orders.repository.*;
 import org.diplom_back.modules.products.entity.ProductVariant;
 import org.diplom_back.modules.products.repository.ProductVariantRepository;
+import org.diplom_back.modules.warehouse.entity.WarehouseStock;
+import org.diplom_back.modules.warehouse.repository.WarehouseStockRepository;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import jakarta.transaction.Transactional;
@@ -19,53 +21,49 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-
 @Service
 @RequiredArgsConstructor
 public class OrderService {
-    // 1. Все репозитории объявляем один раз в начале
     private final OrderRepository orderRepository;
     private final ClientRepository clientRepository;
     private final ProductVariantRepository productVariantRepository;
+    private final WarehouseStockRepository stockRepository;
 
     /**
-     * Создание нового заказа (использует OrderRequest)
+     * Создание заказа: РЕЗЕРВИРОВАНИЕ ТОВАРА
      */
     @Transactional
     public Order createOrder(OrderRequest dto, User user) {
         Client client = user.getClient();
-
         Order order = new Order();
         order.setOrderId(UUID.randomUUID().toString());
         order.setClient(client);
         order.setOrderDate(LocalDateTime.now());
 
-        // --- ИЗМЕНЕНИЕ: Берем статус из DTO (который прислал фронтенд) ---
-        // Если на фронте выбрали CARD -> придет PAID, если CASH -> придет PENDING
-        if (dto.getStatus() != null) {
-            order.setStatus(OrderStatus.valueOf(dto.getStatus()));
-        } else {
-            order.setStatus(OrderStatus.PENDING);
-        }
-
+        // Установка статуса (PAID если картой, PENDING если нал)
+        order.setStatus(dto.getStatus() != null ? OrderStatus.valueOf(dto.getStatus()) : OrderStatus.PENDING);
         order.setShippingAddress(dto.getShippingAddress());
-        order.setPaymentMethod(dto.getPaymentMethod()); // Не забудь сохранить способ оплаты
+        order.setPaymentMethod(dto.getPaymentMethod());
 
         BigDecimal total = BigDecimal.ZERO;
         List<OrderItem> items = new ArrayList<>();
 
-        // --- ЛОГИКА ТОВАРОВ ---
         for (CartItemDTO itemDto : dto.getItems()) {
-            ProductVariant variant = productVariantRepository.findById(itemDto.getVariantId())
-                    .orElseThrow(() -> new RuntimeException("Товар не найден: " + itemDto.getVariantId()));
+            // Ищем остатки на складе через вариант
+            WarehouseStock stock = stockRepository.findByVariant_VariantId(itemDto.getVariantId())
+                    .orElseThrow(() -> new RuntimeException("Складская запись не найдена"));
 
-            if (variant.getStockQuantity() < itemDto.getQuantity()) {
-                throw new RuntimeException("Недостаточно товара на складе: " + variant.getProduct().getName());
+            // Проверяем доступность: (Всего - Резерв)
+            int available = stock.getQuantity() - stock.getReservedQuantity();
+            if (available < itemDto.getQuantity()) {
+                throw new RuntimeException("Недостаточно свободного товара: " + itemDto.getVariantId());
             }
 
-            variant.setStockQuantity(variant.getStockQuantity() - itemDto.getQuantity());
-            productVariantRepository.save(variant);
+            // ШАГ 1: Увеличиваем только резерв!
+            stock.setReservedQuantity(stock.getReservedQuantity() + itemDto.getQuantity());
+            stockRepository.save(stock);
 
+            // Создаем позицию заказа
             OrderItem item = new OrderItem();
             item.setOrderItemId(UUID.randomUUID().toString());
             item.setOrder(order);
@@ -77,46 +75,81 @@ public class OrderService {
             total = total.add(itemDto.getPrice().multiply(BigDecimal.valueOf(itemDto.getQuantity())));
         }
 
-        // --- ЛОГИКА БОНУСОВ ---
-
-        // 1. Списание бонусов (если фронтенд передал usedBonuses)
+        // Логика бонусов
         if (dto.getUsedBonuses() != null && dto.getUsedBonuses().compareTo(BigDecimal.ZERO) > 0) {
-            // Проверяем, не пытается ли юзер списать больше, чем у него есть
             if (client.getBonusPoints() < dto.getUsedBonuses().intValue()) {
-                throw new RuntimeException("Недостаточно бонусов для списания");
+                throw new RuntimeException("Недостаточно бонусов");
             }
-            // Уменьшаем баланс клиента
             client.setBonusPoints(client.getBonusPoints() - dto.getUsedBonuses().intValue());
-            // Вычитаем бонусы из итоговой суммы заказа
             total = total.subtract(dto.getUsedBonuses());
         }
 
         order.setTotalAmount(total);
         order.setItems(items);
 
-        // 2. Начисление новых бонусов (10% от фактически оплаченной суммы)
+        // Начисление кешбэка 10%
         int bonusEarned = total.multiply(new BigDecimal("0.1")).intValue();
         client.setBonusPoints(client.getBonusPoints() + bonusEarned);
 
-        // Сохраняем клиента один раз
         clientRepository.save(client);
-
         return orderRepository.save(order);
     }
 
     /**
-     * Получение истории заказов (использует OrderResponseDTO для фронтенда)
+     * Отмена заказа: СНЯТИЕ РЕЗЕРВА
      */
+    @Transactional
+    public void cancelOrder(String orderId, String userEmail) {
+        Order order = orderRepository.findById(orderId).orElseThrow();
+
+        if (!order.getClient().getUser().getEmail().equals(userEmail)) {
+            throw new AccessDeniedException("Доступ запрещен");
+        }
+
+        // Отменить можно только то, что еще не уехало к клиенту
+        if (order.getStatus() == OrderStatus.DELIVERED || order.getStatus() == OrderStatus.CANCELLED) {
+            throw new IllegalStateException("Заказ нельзя отменить в текущем статусе");
+        }
+
+        // ШАГ 2: Уменьшаем резерв (товар снова становится доступным)
+        for (OrderItem item : order.getItems()) {
+            stockRepository.findByVariant_VariantId(item.getVariantId()).ifPresent(stock -> {
+                stock.setReservedQuantity(stock.getReservedQuantity() - item.getQuantity());
+                stockRepository.save(stock);
+            });
+        }
+
+        order.setStatus(OrderStatus.CANCELLED);
+        orderRepository.save(order);
+    }
+
+    /**
+     * Завершение заказа (Админский метод): ФИЗИЧЕСКОЕ СПИСАНИЕ
+     * Вызывать, когда админ меняет статус на "Выполнено" или "Доставлено"
+     */
+    @Transactional
+    public void completeOrder(String orderId) {
+        Order order = orderRepository.findById(orderId).orElseThrow();
+
+        for (OrderItem item : order.getItems()) {
+            stockRepository.findByVariant_VariantId(item.getVariantId()).ifPresent(stock -> {
+                // ШАГ 3: Вычитаем и из общего количества, и из резерва
+                stock.setQuantity(stock.getQuantity() - item.getQuantity());
+                stock.setReservedQuantity(stock.getReservedQuantity() - item.getQuantity());
+                stockRepository.save(stock);
+            });
+        }
+
+        order.setStatus(OrderStatus.DELIVERED);
+        orderRepository.save(order);
+    }
+
     public List<OrderResponseDTO> getUserOrders(String email) {
-        // Получаем заказы из базы и конвертируем их, обогащая названиями товаров
         return orderRepository.findByClientUserEmail(email).stream()
                 .map(this::convertToResponseDTO)
                 .toList();
     }
 
-    /**
-     * Вспомогательный метод для превращения Entity в DTO с названием товара
-     */
     public OrderResponseDTO convertToResponseDTO(Order order) {
         OrderResponseDTO dto = new OrderResponseDTO();
         dto.setOrderId(order.getOrderId());
@@ -125,16 +158,13 @@ public class OrderService {
         dto.setStatus(order.getStatus().name());
         dto.setShippingAddress(order.getShippingAddress());
 
-        // --- ДОБАВЬТЕ ЭТОТ БЛОК ---
         if (order.getClient() != null) {
-            // Создаем DTO для клиента, чтобы передать имя и телефон
             ClientResponseDTO clientDto = new ClientResponseDTO();
             clientDto.setFirstName(order.getClient().getFirstName());
             clientDto.setLastName(order.getClient().getLastName());
             clientDto.setPhoneNumber(order.getClient().getPhoneNumber());
             dto.setClient(clientDto);
         }
-        // --------------------------
 
         List<OrderItemResponseDTO> itemDTOs = order.getItems().stream()
                 .map(item -> {
@@ -149,39 +179,10 @@ public class OrderService {
                         itemDto.setSize(variant.getSize());
                         itemDto.setSku(variant.getSku());
                     });
-
                     return itemDto;
                 }).toList();
 
         dto.setItems(itemDTOs);
         return dto;
-    }
-
-    @Transactional
-    public void cancelOrder(String orderId, String userEmail) {
-        Order order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new RuntimeException("Заказ не найден"));
-
-        // Проверка владельца заказа
-        if (!order.getClient().getUser().getEmail().equals(userEmail)) {
-            throw new AccessDeniedException("Вы не можете отменить чужой заказ");
-        }
-
-        // Проверка возможности отмены
-        if (!"PENDING".equals(order.getStatus())) {
-            throw new IllegalStateException("Нельзя отменить заказ в статусе: " + order.getStatus());
-        }
-
-        // 1. Возврат товара на склад
-        for (OrderItem item : order.getItems()) {
-            productVariantRepository.findById(item.getVariantId()).ifPresent(variant -> {
-                variant.setStockQuantity(variant.getStockQuantity() + item.getQuantity());
-                productVariantRepository.save(variant);
-            });
-        }
-
-        // 2. Смена статуса
-        order.setStatus(OrderStatus.CANCELLED);
-        orderRepository.save(order);
     }
 }
