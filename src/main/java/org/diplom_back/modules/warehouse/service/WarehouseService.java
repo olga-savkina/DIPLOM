@@ -1,5 +1,7 @@
 package org.diplom_back.modules.warehouse.service;
 
+import org.diplom_back.modules.orders.entity.Order;
+import org.diplom_back.modules.orders.entity.OrderItem;
 import org.diplom_back.modules.products.entity.Product;
 import org.diplom_back.modules.products.entity.ProductVariant;
 import org.diplom_back.modules.products.repository.ProductRepository;
@@ -112,5 +114,19 @@ public class WarehouseService {
         stock.setExpiryDate(expiryDate);
 
         warehouseStockRepository.save(stock);
+    }
+    @Transactional
+    public void finalizeStockRemoval(Order order) {
+        for (OrderItem item : order.getItems()) {
+            // Ищем запись на складе по variantId из позиции заказа
+            WarehouseStock stock = warehouseStockRepository.findByVariant_VariantId(item.getVariantId())
+                    .orElseThrow(() -> new RuntimeException("Складская запись не найдена для варианта: " + item.getVariantId()));
+
+            // Списываем физическое количество и убираем из резерва
+            stock.setQuantity(stock.getQuantity() - item.getQuantity());
+            stock.setReservedQuantity(stock.getReservedQuantity() - item.getQuantity());
+
+            warehouseStockRepository.save(stock);
+        }
     }
 }

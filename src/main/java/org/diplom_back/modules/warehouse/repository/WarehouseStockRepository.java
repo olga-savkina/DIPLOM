@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -24,5 +25,7 @@ public interface WarehouseStockRepository extends JpaRepository<WarehouseStock, 
     void addStock(@Param("variantId") String variantId, @Param("amount") Integer amount);
 
     Optional<WarehouseStock> findByVariant_VariantId(String variantId);
+    // Добавь эту строку, это исправит "Cannot resolve method findByExpiryDateBefore"
+    List<WarehouseStock> findByExpiryDateBefore(LocalDate date);
 
 }
