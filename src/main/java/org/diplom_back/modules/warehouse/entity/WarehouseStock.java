@@ -1,6 +1,7 @@
 package org.diplom_back.modules.warehouse.entity;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Data;
 import org.diplom_back.modules.products.entity.ProductVariant;
@@ -42,6 +43,6 @@ public class WarehouseStock {
 
     @OneToOne
     @JoinColumn(name = "variant_id", referencedColumnName = "variant_id")
-    @JsonBackReference
+    @JsonIgnore // Это поле не пойдет в JSON, и цикл разорвется
     private ProductVariant variant;
 }

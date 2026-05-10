@@ -2,9 +2,11 @@ package org.diplom_back.modules.products.controller;
 
 import org.diplom_back.modules.products.entity.Product;
 import org.diplom_back.modules.products.entity.ProductImage;
+import org.diplom_back.modules.products.entity.ProductVariant;
 import org.diplom_back.modules.products.repository.ProductImageRepository;
 import org.diplom_back.modules.products.repository.ProductRepository;
 import org.diplom_back.modules.products.service.ProductService;
+import org.diplom_back.modules.warehouse.repository.WarehouseStockRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -26,6 +28,8 @@ public class ProductAdminController {
     private ProductRepository productRepository;
     @Autowired
     private ProductService productService;
+    @Autowired
+    private WarehouseStockRepository warehouseStockRepository;
 
     // Добавление нового товара
     @PostMapping(value = "/add", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -58,8 +62,21 @@ public class ProductAdminController {
 
     @GetMapping
     public List<Product> getAllProducts() {
-        // Используем findAll(), чтобы админ видел все товары (и активные, и нет)
-        return productRepository.findAll();
+        List<Product> products = productRepository.findAll();
+
+        // Проходим циклом по всем продуктам
+        for (Product product : products) {
+            // Внутри каждого продукта проходим по его вариантам
+            if (product.getVariants() != null) {
+                for (ProductVariant variant : product.getVariants()) {
+                    // Догружаем сток для каждого варианта
+                    warehouseStockRepository.findByVariant_VariantId(variant.getVariantId())
+                            .ifPresent(variant::setStock);
+                }
+            }
+        }
+
+        return products;
     }
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteProduct(@PathVariable String id) {
@@ -67,20 +84,37 @@ public class ProductAdminController {
         return ResponseEntity.ok("Товар удален");
     }
 
-    @PutMapping("/{id}")
-    public ResponseEntity<?> updateProduct(@PathVariable String id, @RequestBody Product details) {
-        Product product = productRepository.findById(id).orElseThrow();
-        product.setName(details.getName());
-        product.setBrand(details.getBrand());
-        product.setBasePrice(details.getBasePrice());
-        product.setDescription(details.getDescription());
-        product.setActive(details.isActive()); // Не забудь про статус
+    @PutMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> updateProduct(
+            @PathVariable String id,
+            @RequestPart("product") Product details, // Изменено с @RequestBody на @RequestPart
+            @RequestPart(value = "images", required = false) MultipartFile[] images) { // Добавлен прием файлов
+        try {
+            Product product = productRepository.findById(id)
+                    .orElseThrow(() -> new RuntimeException("Товар не найден"));
 
-        // ОБЯЗАТЕЛЬНО для обновления категорий:
-        product.setCategories(details.getCategories());
-        System.out.println("Пришло категорий: " + (product.getCategories() != null ? product.getCategories().size() : 0));
-        productRepository.save(product);
-        return ResponseEntity.ok("Данные обновлены");
+            // Обновляем текстовые данные
+            product.setName(details.getName());
+            product.setBrand(details.getBrand());
+            product.setBasePrice(details.getBasePrice());
+            product.setDescription(details.getDescription());
+            product.setActive(details.isActive());
+            product.setCategories(details.getCategories());
+
+            // Сохраняем основные данные товара
+            productRepository.save(product);
+
+            // Если прикреплены новые изображения — сохраняем их
+            if (images != null && images.length > 0) {
+                productService.saveProductImages(product, images);
+            }
+
+            return ResponseEntity.ok("Данные и изображения обновлены");
+        } catch (IOException e) {
+            return ResponseEntity.status(500).body("Ошибка при сохранении новых изображений");
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body("Ошибка обновления: " + e.getMessage());
+        }
     }
 
     @DeleteMapping("/{productId}/images/{imageId}")

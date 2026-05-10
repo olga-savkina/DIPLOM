@@ -48,7 +48,7 @@ public class OrderStatusScheduler {
     }
 
     // Запускать каждые 3 часа (время в миллисекундах)
-    @Scheduled(cron = "0 41 19 * * *")
+    @Scheduled(cron = "0 1 1 * * *")
     public void autoUpdateOrderStatus() {
         LocalDateTime now = LocalDateTime.now();
 
@@ -74,7 +74,7 @@ public class OrderStatusScheduler {
         System.out.println("Автоматическое обновление статусов завершено в " + now);
     }
 
-    @Scheduled(cron = "0 40 19 * * *") // Запуск каждую ночь в 01:00
+    @Scheduled(cron = "0 0 1 * * *") // Запуск каждую ночь в 01:00
     public void applyExpiryDiscounts() {
         LocalDate warningDate = LocalDate.now().plusDays(7);
 

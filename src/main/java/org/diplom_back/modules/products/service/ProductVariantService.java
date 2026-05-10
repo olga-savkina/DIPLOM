@@ -5,9 +5,12 @@ import org.diplom_back.modules.products.entity.Product;
 import org.diplom_back.modules.products.entity.ProductVariant;
 import org.diplom_back.modules.products.repository.ProductRepository;
 import org.diplom_back.modules.products.repository.ProductVariantRepository;
+import org.diplom_back.modules.warehouse.entity.WarehouseStock;
+import org.diplom_back.modules.warehouse.repository.WarehouseStockRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -19,6 +22,8 @@ public class ProductVariantService {
 
     @Autowired
     private ProductRepository productRepository;
+    @Autowired
+    private WarehouseStockRepository stockRepository;
 
     public List<ProductVariant> getVariantsByProductId(String productId) {
         return variantRepository.findByProductProductId(productId);
@@ -26,17 +31,39 @@ public class ProductVariantService {
 
     @Transactional
     public ProductVariant addVariant(String productId, ProductVariant variant) {
+        // 1. Ищем продукт
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new RuntimeException("Товар не найден"));
 
+        // 2. Инициализируем вариант
         variant.setVariantId(UUID.randomUUID().toString());
         variant.setProduct(product);
 
-        // ВАЖНО: При создании нового варианта складская запись
-        // обычно создается автоматически через WarehouseService или триггер,
-        // либо здесь НЕ устанавливаются количество и даты.
+        // Временно сохраняем объект стока, который пришел с фронта
+        WarehouseStock incomingStock = variant.getStock();
 
-        return variantRepository.save(variant);
+        // ВАЖНО: обнуляем сток в объекте варианта перед первым сохранением,
+        // чтобы избежать циклической ошибки или попытки сохранить пустой объект
+        variant.setStock(null);
+
+        // 3. СОХРАНЯЕМ ВАРИАНТ ПЕРВЫМ
+        ProductVariant savedVariant = variantRepository.save(variant);
+
+        // 4. ТЕПЕРЬ СОХРАНЯЕМ СКЛАД
+        if (incomingStock != null) {
+            incomingStock.setStockId(UUID.randomUUID().toString());
+            incomingStock.setVariant(savedVariant); // Привязываем к уже сохраненному варианту
+            incomingStock.setLastUpdated(LocalDateTime.now());
+            incomingStock.setReservedQuantity(0);
+
+            // Явное сохранение через репозиторий склада
+            stockRepository.save(incomingStock);
+
+            // Устанавливаем связь обратно для возвращаемого объекта
+            savedVariant.setStock(incomingStock);
+        }
+
+        return savedVariant;
     }
 
     @Transactional
@@ -64,4 +91,5 @@ public class ProductVariantService {
 
         return variantRepository.save(variant);
     }
+
 }

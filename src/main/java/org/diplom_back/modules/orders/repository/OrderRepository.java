@@ -1,5 +1,6 @@
 package org.diplom_back.modules.orders.repository;
 
+import org.diplom_back.modules.auth.entity.User;
 import org.diplom_back.modules.orders.entity.Order;
 import org.diplom_back.modules.orders.entity.OrderStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -16,5 +17,6 @@ public interface OrderRepository extends JpaRepository<Order, String> {
     // Считать общую выручку прямо в базе
     @Query("SELECT SUM(o.totalAmount) FROM Order o WHERE o.status != 'CANCELLED'")
     Double getTotalRevenue();
+    long countByClient_User(User user);
 }
 

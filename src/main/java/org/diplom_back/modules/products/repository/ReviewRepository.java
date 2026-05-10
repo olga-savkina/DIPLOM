@@ -11,4 +11,5 @@ public interface ReviewRepository extends JpaRepository<Review, String> {
     // Получаем только прошедшие модерацию отзывы для конкретного товара
     List<Review> findByProductIdAndIsModeratedTrueOrderByReviewDateDesc(String productId);
     List<Review> findAllByOrderByReviewDateDesc();
+    List<Review> findByisModeratedTrue();
 }

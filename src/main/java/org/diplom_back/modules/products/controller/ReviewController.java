@@ -1,74 +1,57 @@
 package org.diplom_back.modules.products.controller;
 
 import lombok.RequiredArgsConstructor;
-import org.diplom_back.modules.auth.entity.Client;
-import org.diplom_back.modules.auth.repository.ClientRepository;
+import org.diplom_back.modules.products.DTO.ReviewDTO;
 import org.diplom_back.modules.products.entity.Review;
-import org.diplom_back.modules.products.repository.ReviewRepository;
+import org.diplom_back.modules.products.service.ReviewService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.security.Principal;
-import java.time.LocalDateTime;
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/reviews")
 @RequiredArgsConstructor
+@CrossOrigin(origins = "http://localhost:3000") // Чтобы фронт не ругался на CORS
 public class ReviewController {
-    private final ReviewRepository reviewRepository;
-    private final ClientRepository clientRepository;
 
-    // --- КЛИЕНТСКАЯ ЧАСТЬ ---
+    private final ReviewService reviewService;
 
-    // Получение только одобренных отзывов для конкретного товара
+    // --- ПУБЛИЧНЫЕ И КЛИЕНТСКИЕ ---
+
     @GetMapping("/{productId}")
     public ResponseEntity<List<Review>> getReviews(@PathVariable String productId) {
-        return ResponseEntity.ok(reviewRepository.findByProductIdAndIsModeratedTrueOrderByReviewDateDesc(productId));
+        return ResponseEntity.ok(reviewService.getApprovedReviewsByProduct(productId));
     }
 
-    // Добавление отзыва (уходит на модерацию)
+    @GetMapping("/public/approved")
+    public List<ReviewDTO> getApprovedReviews() {
+        return reviewService.getOnlyApproved();
+    }
+
     @PostMapping
     public ResponseEntity<?> addReview(@RequestBody Review review, Principal principal) {
         if (principal == null) return ResponseEntity.status(401).body("Нужна авторизация");
-
-        Client client = clientRepository.findByUserEmail(principal.getName())
-                .orElseThrow(() -> new RuntimeException("Клиент не найден"));
-
-        review.setClientId(client.getClientId());
-        review.setReviewDate(LocalDateTime.now());
-        review.setModerated(false);
-
-        return ResponseEntity.ok(reviewRepository.save(review));
+        return ResponseEntity.ok(reviewService.addReview(review, principal.getName()));
     }
 
-    // --- АДМИНСКАЯ ЧАСТЬ ---
+    // --- АДМИНСКИЕ ---
 
-    // Получить ВСЕ отзывы для админки
     @GetMapping("/admin/all")
     public ResponseEntity<List<Review>> getAllReviewsForAdmin() {
-        // Сортируем по дате: самые новые сверху
-        return ResponseEntity.ok(reviewRepository.findAllByOrderByReviewDateDesc());
+        return ResponseEntity.ok(reviewService.getAllForAdmin());
     }
 
-    // Одобрить отзыв (модерация)
     @PutMapping("/admin/{id}/approve")
     public ResponseEntity<?> approveReview(@PathVariable String id) {
-        Review review = reviewRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Отзыв не найден"));
-
-        review.setModerated(true);
-        reviewRepository.save(review);
+        reviewService.approveReview(id);
         return ResponseEntity.ok().body("Отзыв одобрен");
     }
 
-    // Удалить отзыв
     @DeleteMapping("/admin/{id}")
     public ResponseEntity<?> deleteReview(@PathVariable String id) {
-        if (!reviewRepository.existsById(id)) {
-            return ResponseEntity.notFound().build();
-        }
-        reviewRepository.deleteById(id);
+        reviewService.deleteReview(id);
         return ResponseEntity.ok().body("Отзыв удален");
     }
 }

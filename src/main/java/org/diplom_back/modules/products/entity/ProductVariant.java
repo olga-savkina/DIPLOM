@@ -41,22 +41,10 @@ public class ProductVariant {
     @Column(name = "age_max")
     private Integer ageMax;
     @Transient
-    // ВАЖНО: Эти поля пока остаются, если база еще не обновлена,
-    // но в будущем их нужно удалить, так как данные теперь в WarehouseStock
-    @Column(name = "expiry_date")
-    private LocalDate expiryDate;
-    @Transient
-    @Column(name = "production_date")
-    private LocalDate productionDate;
-    @Transient
-    // Старое поле для совместимости (пока не удалено в БД)
-    @Column(name = "stock_quantity")
-    private Integer stockQuantity;
 
     // СВЯЗЬ СО СКЛАДОМ
     // mappedBy = "variant" указывает на поле 'variant' в классе WarehouseStock
-    @OneToOne(mappedBy = "variant", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
-    @JsonManagedReference
+    @OneToOne(mappedBy = "variant", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
     private WarehouseStock stock;
 
     @PrePersist

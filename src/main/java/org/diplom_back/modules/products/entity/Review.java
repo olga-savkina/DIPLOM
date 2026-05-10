@@ -3,6 +3,7 @@ package org.diplom_back.modules.products.entity;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import lombok.*;
+import org.diplom_back.modules.auth.entity.Client;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -20,9 +21,9 @@ public class Review {
 
     @Column(name = "product_id")
     private String productId;
-
-    @Column(name = "client_id")
-    private String clientId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "client_id")
+    private Client client;
 
     private int rating;
     private String comment;
@@ -32,4 +33,5 @@ public class Review {
 
     @Column(name = "is_moderated")
     private boolean isModerated = false;
+
 }
