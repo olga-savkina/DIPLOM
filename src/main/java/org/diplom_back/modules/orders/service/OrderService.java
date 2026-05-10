@@ -41,16 +41,18 @@ public class OrderService {
         order.setClient(client);
         order.setOrderDate(LocalDateTime.now());
 
+        // Установка статуса
         order.setStatus(dto.getStatus() != null ? OrderStatus.valueOf(dto.getStatus()) : OrderStatus.PENDING);
         order.setShippingAddress(dto.getShippingAddress());
         order.setPaymentMethod(dto.getPaymentMethod());
 
-        BigDecimal subtotal = BigDecimal.ZERO; // Сумма до скидок
+        BigDecimal subtotal = BigDecimal.ZERO;
         List<OrderItem> items = new ArrayList<>();
 
+        // Обработка товаров на складе
         for (CartItemDTO itemDto : dto.getItems()) {
             WarehouseStock stock = stockRepository.findByVariant_VariantId(itemDto.getVariantId())
-                    .orElseThrow(() -> new RuntimeException("Складская запись не найдена"));
+                    .orElseThrow(() -> new RuntimeException("Складская запись не найдена для: " + itemDto.getVariantId()));
 
             int available = stock.getQuantity() - stock.getReservedQuantity();
             if (available < itemDto.getQuantity()) {
@@ -68,64 +70,65 @@ public class OrderService {
             item.setPriceAtSale(itemDto.getPrice());
 
             items.add(item);
-            // Считаем общую сумму без скидок
             subtotal = subtotal.add(itemDto.getPrice().multiply(BigDecimal.valueOf(itemDto.getQuantity())));
         }
 
-        // --- ЛОГИКА СКИДОК ---
+        // --- ЛОГИКА СКИДОК (Первый заказ / День рождения) ---
         BigDecimal discountMultiplier = BigDecimal.ZERO;
 
-// 1. Проверка на первый заказ через User
         long orderCount = orderRepository.countByClient_User(user);
         if (orderCount == 0) {
             discountMultiplier = new BigDecimal("0.20");
-        }
-
-// 2. Проверка на День Рождения через User.getChildren()
-        if (discountMultiplier.compareTo(BigDecimal.ZERO) == 0) {
+        } else {
             LocalDate today = LocalDate.now();
-
-            // Берем список детей напрямую из объекта user, как указано в твоей модели
             boolean isBirthdayPeriod = user.getChildren().stream().anyMatch(child -> {
                 if (child.getBirthDate() == null) return false;
-
-                // Создаем дату ДР в текущем году для сравнения
                 LocalDate bdayThisYear = child.getBirthDate().withYear(today.getYear());
-
-                // Проверяем окно в +/- 3 дня от сегодня
-                return !today.isBefore(bdayThisYear.minusDays(3)) &&
-                        !today.isAfter(bdayThisYear.plusDays(3));
+                return !today.isBefore(bdayThisYear.minusDays(3)) && !today.isAfter(bdayThisYear.plusDays(3));
             });
-
             if (isBirthdayPeriod) {
                 discountMultiplier = new BigDecimal("0.20");
             }
         }
 
-// Расчет итоговой суммы
         BigDecimal discountAmount = subtotal.multiply(discountMultiplier);
         BigDecimal amountAfterDiscount = subtotal.subtract(discountAmount);
 
+        // --- ЛОГИКА БОНУСОВ ---
+        BigDecimal finalTotal = amountAfterDiscount;
 
-        // Логика бонусов (применяем к сумме после основной скидки)
-        BigDecimal total = amountAfterDiscount;
         if (dto.getUsedBonuses() != null && dto.getUsedBonuses().compareTo(BigDecimal.ZERO) > 0) {
-            if (client.getBonusPoints() < dto.getUsedBonuses().intValue()) {
-                throw new RuntimeException("Недостаточно бонусов");
+            int bonusesToUse = dto.getUsedBonuses().intValue();
+
+            if (client.getBonusPoints() < bonusesToUse) {
+                throw new RuntimeException("Недостаточно бонусов на счету клиента");
             }
-            client.setBonusPoints(client.getBonusPoints() - dto.getUsedBonuses().intValue());
-            total = total.subtract(dto.getUsedBonuses());
+
+            // 1. Записываем использованные бонусы в объект заказа (ДЛЯ БД)
+            order.setUsedBonuses(bonusesToUse);
+
+            // 2. Списываем бонусы с баланса клиента
+            client.setBonusPoints(client.getBonusPoints() - bonusesToUse);
+
+            // 3. Вычитаем из итоговой суммы оплаты
+            finalTotal = finalTotal.subtract(dto.getUsedBonuses());
+        } else {
+            order.setUsedBonuses(0);
         }
 
-        order.setTotalAmount(total);
+        // Проверка, чтобы сумма не стала отрицательной
+        if (finalTotal.compareTo(BigDecimal.ZERO) < 0) finalTotal = BigDecimal.ZERO;
+
+        order.setTotalAmount(finalTotal);
         order.setItems(items);
 
-        // Начисление кешбэка 10% от фактически оплаченной суммы
-        int bonusEarned = total.multiply(new BigDecimal("0.1")).intValue();
+        // --- НАЧИСЛЕНИЕ НОВОГО КЕШБЭКА (10% от того, что реально оплатили) ---
+        int bonusEarned = finalTotal.multiply(new BigDecimal("0.1")).intValue();
         client.setBonusPoints(client.getBonusPoints() + bonusEarned);
 
+        // Сохраняем клиента и заказ
         clientRepository.save(client);
-        return orderRepository.save(order);
+        return orderRepository.save(order); // Исправлена опечатка ordeуrRepository
     }
 
     /**
