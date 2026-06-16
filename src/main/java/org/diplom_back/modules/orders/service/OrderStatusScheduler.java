@@ -48,7 +48,8 @@ public class OrderStatusScheduler {
     }
 
     // Запускать каждые 3 часа (время в миллисекундах)
-    @Scheduled(cron = "0 1 1 * * *")
+    @Scheduled(cron = "0 25 17 * * *")
+    @Transactional
     public void autoUpdateOrderStatus() {
         LocalDateTime now = LocalDateTime.now();
 

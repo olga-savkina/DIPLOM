@@ -22,6 +22,7 @@ public class AnalyticsDTO {
     private double avgRating;                 // Средний рейтинг (0.0 - 5.0)
     private long totalUsers;                  // Всего человек в системе
     private long activeCustomers;             // Сколько из них реально покупали
+    private List<AbcXyzProductDTO> abcXyzMatrix;
 }
 
 

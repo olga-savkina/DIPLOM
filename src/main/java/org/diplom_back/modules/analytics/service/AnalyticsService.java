@@ -1,5 +1,6 @@
 package org.diplom_back.modules.analytics.service;
 
+import org.diplom_back.modules.analytics.dto.AbcXyzProductDTO;
 import org.diplom_back.modules.analytics.dto.AnalyticsDTO;
 import org.diplom_back.modules.analytics.dto.ProductSalesDTO;
 import org.diplom_back.modules.orders.entity.Order;
@@ -109,12 +110,85 @@ public class AnalyticsService {
                 .map(o -> o.getClient().getUser().getUserId()) // Вызываем getUserId() у объекта User
                 .distinct()
                 .count();
+// 9. ABC-XYZ анализ
+// Считаем выручку и продажи по датам для каждого товара
+        Map<String, Map<String, Double>> productSalesByDate = new HashMap<>();
 
+        allOrders.stream()
+                .filter(o -> o.getOrderDate() != null)
+                .forEach(order -> {
+                    String date = order.getOrderDate().toLocalDate().toString();
+                    order.getItems().forEach(item -> {
+                        ProductVariant variant = variantRepository.findById(item.getVariantId()).orElse(null);
+                        String name = (variant != null && variant.getProduct() != null)
+                                ? variant.getProduct().getName() : "Неизвестный товар";
+                        double revenue = item.getPriceAtSale() != null
+                                ? item.getPriceAtSale().doubleValue() * item.getQuantity() : 0;
+                        productSalesByDate
+                                .computeIfAbsent(name, k -> new HashMap<>())
+                                .merge(date, revenue, Double::sum);
+                    });
+                });
+
+// Общая выручка по товарам
+        Map<String, Double> productRevenue = productSalesByDate.entrySet().stream()
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        e -> e.getValue().values().stream().mapToDouble(Double::doubleValue).sum()
+                ));
+
+// ABC: сортируем по убыванию выручки, считаем накопленный %
+        double grandTotal = productRevenue.values().stream().mapToDouble(Double::doubleValue).sum();
+        List<Map.Entry<String, Double>> sortedByRevenue = productRevenue.entrySet().stream()
+                .sorted((a, b) -> Double.compare(b.getValue(), a.getValue()))
+                .collect(Collectors.toList());
+
+        Map<String, String> abcGroups = new LinkedHashMap<>();
+        double cumulative = 0;
+        for (Map.Entry<String, Double> entry : sortedByRevenue) {
+            cumulative += entry.getValue();
+            double share = grandTotal > 0 ? cumulative / grandTotal : 0;
+            if (share <= 0.80) abcGroups.put(entry.getKey(), "A");
+            else if (share <= 0.95) abcGroups.put(entry.getKey(), "B");
+            else abcGroups.put(entry.getKey(), "C");
+        }
+
+// XYZ: коэффициент вариации (CV = std / mean * 100%)
+        Map<String, String> xyzGroups = new HashMap<>();
+        Map<String, Double> cvMap = new HashMap<>();
+
+        productSalesByDate.forEach((name, salesByDate) -> {
+            Collection<Double> values = salesByDate.values();
+            double mean = values.stream().mapToDouble(Double::doubleValue).average().orElse(0);
+            if (mean == 0) {
+                xyzGroups.put(name, "Z");
+                cvMap.put(name, 100.0);
+                return;
+            }
+            double variance = values.stream()
+                    .mapToDouble(v -> Math.pow(v - mean, 2))
+                    .average().orElse(0);
+            double cv = (Math.sqrt(variance) / mean) * 100;
+            cvMap.put(name, cv);
+            if (cv < 10) xyzGroups.put(name, "X");
+            else if (cv < 25) xyzGroups.put(name, "Y");
+            else xyzGroups.put(name, "Z");
+        });
+
+        List<AbcXyzProductDTO> abcXyzMatrix = productRevenue.keySet().stream()
+                .map(name -> new AbcXyzProductDTO(
+                        name,
+                        abcGroups.getOrDefault(name, "C"),
+                        xyzGroups.getOrDefault(name, "Z"),
+                        productRevenue.get(name),
+                        cvMap.getOrDefault(name, 0.0)
+                ))
+                .collect(Collectors.toList());
         // Не забудь обновить AnalyticsDTO, чтобы он принимал все эти поля в конструктор
         return new AnalyticsDTO(
                 totalRevenue, totalOrders, avgCheck, topProducts, dynamics,
                 cityStats, cohortData, totalBonusesUsed, ordersWithBonuses,
-                totalReviews, avgRating, totalUsers, activeCustomers
+                totalReviews, avgRating, totalUsers, activeCustomers,abcXyzMatrix
         );
     }
 }
